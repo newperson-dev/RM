@@ -64,7 +64,7 @@
 #define configTICK_RATE_HZ                       ((TickType_t)1000)
 #define configMAX_PRIORITIES                     ( 7 )
 #define configMINIMAL_STACK_SIZE                 ((uint16_t)128)
-#define configTOTAL_HEAP_SIZE                    ((size_t)4096)
+#define configTOTAL_HEAP_SIZE                    ((size_t)8192)
 #define configMAX_TASK_NAME_LEN                  ( 16 )
 #define configUSE_16_BIT_TICKS                   0
 #define configUSE_MUTEXES                        1
@@ -137,6 +137,23 @@ standard names. */
 
 /* USER CODE BEGIN Defines */
 /* Section where parameter definitions can be added (for instance, to override default ones in FreeRTOS.h) */
+
+/* !! 必须修改 !! 请在 MX 的 FREERTOS -> Config parameters 里把 TOTAL_HEAP_SIZE
+   从 4096 改成 8192（F103RC 有 48KB RAM，很宽裕）。
+
+   实测（arm-none-eabi-gcc, configUSE_NEWLIB_REENTRANT=1）：
+     sizeof(TCB_t) = 376 B   （其中 struct _reent 就占 288 B）
+     每个任务栈    = 256 字 = 1024 B
+   三个任务（Motor + Arm + Comm）的需求：
+     3 x (1024 + 8) 栈  ≈ 3096
+     3 x (376  + 8) TCB ≈ 1152
+     StreamBuffer 128字节 + 结构体 ≈ 196
+     合计 ≈ 4444 B  >  4096 B
+   也就是说堆保持 4096 时，第三个任务创建会失败，串口会打印
+   "FATAL: CommTask create failed (heap?)"。
+
+   这里没法用 #if 自动兜底：configTOTAL_HEAP_SIZE 带 (size_t) 强制转换，
+   不能出现在预处理表达式里。 */
 /* USER CODE END Defines */
 
 #endif /* FREERTOS_CONFIG_H */

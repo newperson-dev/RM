@@ -25,7 +25,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "control_time.h"
+#include "motor.h"
+#include "servo_arm.h"
+#include "comm.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,18 +48,20 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-
+/* CommTaskHandle 已由 CubeMX 生成（见下面 osThreadId 列表），这里不要再声明一次 */
 /* USER CODE END Variables */
 osThreadId MotorTaskHandle;
 osThreadId ArmTaskHandle;
+osThreadId CommTaskHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-
+/* StartCommTask 的原型已由 CubeMX 生成，这里不要再声明一次 */
 /* USER CODE END FunctionPrototypes */
 
 void StartMotorTask(void const * argument);
 void StartArmTask(void const * argument);
+void StartCommTask(void const * argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -111,8 +116,20 @@ void MX_FREERTOS_Init(void) {
   osThreadDef(ArmTask, StartArmTask, osPriorityAboveNormal, 0, 256);
   ArmTaskHandle = osThreadCreate(osThread(ArmTask), NULL);
 
+  /* definition and creation of CommTask */
+  osThreadDef(CommTask, StartCommTask, osPriorityNormal, 0, 256);
+  CommTaskHandle = osThreadCreate(osThread(CommTask), NULL);
+
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  /* CommTask 的 osThreadDef / osThreadCreate 已经由 CubeMX 在上面的
+     "definition and creation of CommTask" 里生成（优先级 osPriorityNormal，栈 256 字 = 1KB），
+     这里千万不要再写一遍，否则会报 os_thread_def_CommTask 重复定义。
+
+     下面只做一件事：任务创建失败会静默返回 NULL（堆不够时最常见），这里明确报出来。
+     调试时可以把任意一个改成 Error_Handler() 直接停机，避免"半个机器人"跑起来。 */
+  if (MotorTaskHandle == NULL) { Comm_LogLine("FATAL: MotorTask create failed (heap?)"); }
+  if (ArmTaskHandle   == NULL) { Comm_LogLine("FATAL: ArmTask create failed (heap?)"); }
+  if (CommTaskHandle  == NULL) { Comm_LogLine("FATAL: CommTask create failed (heap?)"); }
   /* USER CODE END RTOS_THREADS */
 
 }
@@ -151,6 +168,24 @@ __weak void StartArmTask(void const * argument)
     osDelay(1);
   }
   /* USER CODE END StartArmTask */
+}
+
+/* USER CODE BEGIN Header_StartCommTask */
+/**
+* @brief Function implementing the CommTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartCommTask */
+__weak void StartCommTask(void const * argument)
+{
+  /* USER CODE BEGIN StartCommTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartCommTask */
 }
 
 /* Private application code --------------------------------------------------*/

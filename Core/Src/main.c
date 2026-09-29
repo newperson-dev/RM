@@ -25,7 +25,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "control_time.h"
+#include "motor.h"
+#include "servo_arm.h"
+#include "comm.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -96,8 +99,21 @@ int main(void)
   MX_TIM4_Init();
   MX_TIM5_Init();
   MX_USART2_UART_Init();
+  MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
+  /* 1. 高精度时间戳（DWT）：必须在任何 ControlTime_Mark 之前调用 */
+  ControlTime_Init(HAL_RCC_GetHCLKFreq());
 
+  /* 2. 电机：启动 TIM1 四路 PWM 与 TIM2..5 编码器，方向/PWM 归零 */
+  Motor_Init();
+
+  /* 3. 舵机：启动 TIM8 四路 50Hz PWM，全部回中位
+        前提：MX 里已配置 TIM8（PC6..PC9, PSC=71, ARR=19999），
+        否则 servo_arm.h 的 SERVO_HW_ENABLED 要先置 0 */
+  Servo_Init();
+
+  /* 4. 串口：创建接收缓冲、改写 USART2 中断优先级并启动接收 */
+  Comm_Init();
   /* USER CODE END 2 */
 
   /* Call init function for freertos objects (in cmsis_os2.c) */

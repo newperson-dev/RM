@@ -46,15 +46,22 @@ void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, Motor1GPIOA_Pin|Motor1GPIOB_Pin|Motor2GPIOA_Pin|Motor2GPIOB_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, Motor4GPIOB_Pin|Motor4GPIOA_Pin|Motor3GPIOB_Pin|Motor3GPIOA_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, Motor2GPIOB_Pin|Motor2GPIOA_Pin|Motor1GPIOB_Pin|Motor1GPIOA_Pin, GPIO_PIN_RESET);
+  /*Configure GPIO pins : Motor1GPIOA_Pin Motor1GPIOB_Pin Motor2GPIOA_Pin Motor2GPIOB_Pin */
+  GPIO_InitStruct.Pin = Motor1GPIOA_Pin|Motor1GPIOB_Pin|Motor2GPIOA_Pin|Motor2GPIOB_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : Motor4GPIOB_Pin Motor4GPIOA_Pin Motor3GPIOB_Pin Motor3GPIOA_Pin */
   GPIO_InitStruct.Pin = Motor4GPIOB_Pin|Motor4GPIOA_Pin|Motor3GPIOB_Pin|Motor3GPIOA_Pin;
@@ -62,13 +69,6 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : Motor2GPIOB_Pin Motor2GPIOA_Pin Motor1GPIOB_Pin Motor1GPIOA_Pin */
-  GPIO_InitStruct.Pin = Motor2GPIOB_Pin|Motor2GPIOA_Pin|Motor1GPIOB_Pin|Motor1GPIOA_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
 }
 
