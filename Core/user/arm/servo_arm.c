@@ -14,7 +14,7 @@
   ******************************************************************************
   */
 #include "servo_arm.h"
-#include "control_time.h"
+#include "../common/control_time.h"   /* 目录已按任务分文件夹，用相对路径包含 */
 
 #include "FreeRTOS.h"
 #include "task.h"

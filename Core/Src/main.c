@@ -19,16 +19,19 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include "dma.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "control_time.h"
-#include "motor.h"
-#include "servo_arm.h"
-#include "comm.h"
+/* 用户代码按任务职责分目录放在 Core/user/ 下；CMake 只把 Core/Inc 加进了头文件搜索路径，
+   而 CMakeLists.txt 是自动生成的不便修改，所以这里用相对路径包含。 */
+#include "../user/common/control_time.h"
+#include "../user/motor/motor.h"
+#include "../user/arm/servo_arm.h"
+#include "../user/comm/comm.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -93,6 +96,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();

@@ -25,10 +25,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "control_time.h"
-#include "motor.h"
-#include "servo_arm.h"
-#include "comm.h"
+/* 用户代码目录：Core/user/{common,motor,arm,comm}/，用相对路径包含（原因见 main.c） */
+#include "../user/common/control_time.h"
+#include "../user/motor/motor.h"
+#include "../user/arm/servo_arm.h"
+#include "../user/comm/comm.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
