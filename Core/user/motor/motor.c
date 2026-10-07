@@ -9,6 +9,8 @@
   *     周期执行，所以不存在两个任务同时写 CCR/方向线的竞态。
   *   - Motor_SetXxx() 只允许任务上下文调用（内部用了 taskENTER_CRITICAL），
   *     绝对不要放进中断里。
+ *   - 闭环目标斜坡（MOTOR_TARGET_SLEW_CPS_PER_S）只在 MotorTask 内部生效：
+ *     共享的 target_cps 仍是“指令值”，斜坡后的 ramped_cps 是任务私有状态。
   *   - 成组的参数（3 个增益）用一小段临界区保证"三个一起生效"。
   ******************************************************************************
   */
@@ -42,7 +44,9 @@ static const MotorHw_t s_hw[MOTOR_NUM] =
   { &htim1, TIM_CHANNEL_4, Motor4GPIOA_GPIO_Port, Motor4GPIOA_Pin, Motor4GPIOB_GPIO_Port, Motor4GPIOB_Pin, &htim5 },
 };
 
-/** 某个电机转向装反了就把对应位改成 1（也可以对调两根方向线，效果一样） */
+/** 某个电机"正方向"与预期相反时把对应位置 1：PWM 输出与编码器测速**同时**翻转，
+ *  相当于把该电机的正方向整体镜像，开环/闭环下都稳定（闭环正反馈的前提是只翻一侧）。
+ *  注意：这只定义"该电机的正方向"；底盘前后左右的方向标定在 chassis.c 的 s_dir[]。 */
 static const uint8_t s_invert[MOTOR_NUM] = { 0U, 0U, 0U, 0U };
 
 /* ========================== 内部状态 ========================== */
@@ -80,6 +84,7 @@ typedef struct
   int16_t  enc_prev;
   int32_t  enc_total;
   int16_t  enc_delta;
+  int32_t  ramped_cps;   /* 斜坡后的闭环目标（仅 MotorTask 使用），见 Motor_UpdateAll 第 8 步 */
   float    speed_cps;
   float    speed_rpm;
   float    angle_deg;
@@ -130,6 +135,27 @@ static void motor_apply(MotorId_t id, int32_t pwm)
   __HAL_TIM_SET_COMPARE(hw->pwm_tim, hw->pwm_ch, duty);
   m->out_pwm = (s_invert[id] != 0U) ? -pwm : pwm;
 }
+
+#if (MOTOR_TARGET_SLEW_CPS_PER_S > 0)
+/** 斜坡推进一步：把 cur 朝 target 推进最多 step（正数，单位 cps）。
+ *  差值用 int64 计算——`SPD` 命令没有范围校验（手册 7.1 的已知限制），目标可能接近 INT32_MAX，
+ *  直接 int32 累加会溢出回绕，反而把电机推向反方向。只在 MotorTask 里调用。
+ *  （斜坡宏设为 0 时本函数不参与编译，避免"静态函数未使用"警告。） */
+static int32_t motor_slew_step(int32_t cur, int32_t target, int32_t step)
+{
+  int64_t diff = (int64_t)target - (int64_t)cur;
+
+  if (diff > (int64_t)step)
+  {
+    return cur + step;      /* 只在差值大于一步时前进，故不会越过 target、也不会溢出 */
+  }
+  if (diff < -(int64_t)step)
+  {
+    return cur - step;
+  }
+  return target;            /* 剩余差值不足一步：直接对齐 */
+}
+#endif
 
 /* ========================== 初始化 ========================== */
 
@@ -216,6 +242,7 @@ void Motor_Init(void)
     m->enc_prev             = 0;
     m->enc_total            = 0;
     m->enc_delta            = 0;
+    m->ramped_cps           = 0;
     m->speed_cps            = 0.0f;
     m->speed_rpm            = 0.0f;
     m->angle_deg            = 0.0f;
@@ -466,6 +493,7 @@ void Motor_UpdateAll(float dt)
     {
       PID_Reset(&m->speed_pid);
       PID_Reset(&m->pos_pid);
+      m->ramped_cps = 0;         /* 重新使能闭环时目标从 0 开始斜坡，避免跳变 */
     }
 
     /* ---- 3. 增益变化时才下发到 PID ---- */
@@ -496,10 +524,16 @@ void Motor_UpdateAll(float dt)
       m->angle_deg = 0.0f;
     }
 
-    /* ---- 5. 编码器：有符号差值，一次解决正负号和 16 位回绕 ---- */
+    /* ---- 5. 编码器：有符号差值，一次解决正负号和 16 位回绕 ----
+       s_invert 置 1 时测速与 motor_apply 的 PWM 翻转保持同侧，
+       闭环里"指令 -> 输出 -> 测量"的符号才是一致的（否则正反馈飞转）。 */
     now          = (int16_t)__HAL_TIM_GET_COUNTER(s_hw[i].enc_tim);
     delta        = (int16_t)(now - m->enc_prev);
     m->enc_prev  = now;
+    if (s_invert[i] != 0U)
+    {
+      delta = (int16_t)(-delta);
+    }
     m->enc_delta = delta;
     m->enc_total += (int32_t)delta;
 
@@ -557,7 +591,24 @@ void Motor_UpdateAll(float dt)
       {
         PID_Reset(&m->pos_pid);      /* 退出位置环，清掉它的积分 */
       }
-      motor_apply((MotorId_t)i, (int32_t)PID_Calc(&m->speed_pid, m->speed_cps, (float)speed_target_cps, dt));
+
+#if (MOTOR_TARGET_SLEW_CPS_PER_S > 0)
+      /* ---- 目标斜坡：ramped_cps 按固定速率逼近指令目标，轮速不跳变 ----
+         含过零换向：目标从正变负时同样被斜率限制，不会一帧反转。 */
+      {
+        int32_t step = (int32_t)(((float)MOTOR_TARGET_SLEW_CPS_PER_S * dt) + 0.5f);
+
+        if (step < 1)
+        {
+          step = 1;      /* dt 异常时至少走 1 cps，保证一定能到目标 */
+        }
+        m->ramped_cps = motor_slew_step(m->ramped_cps, speed_target_cps, step);
+      }
+#else
+      m->ramped_cps = speed_target_cps;   /* 斜坡关闭：目标立即生效（旧行为） */
+#endif
+
+      motor_apply((MotorId_t)i, (int32_t)PID_Calc(&m->speed_pid, m->speed_cps, (float)m->ramped_cps, dt));
       m->pos_loop_active = 0U;
     }
     else
@@ -572,6 +623,7 @@ void Motor_UpdateAll(float dt)
       m->closed_loop = 0U;
       m->pos_loop_en = 0U;
       m->target_cps  = 0;
+      m->ramped_cps  = 0;
       PID_Reset(&m->speed_pid);
       PID_Reset(&m->pos_pid);
       motor_apply((MotorId_t)i, 0);

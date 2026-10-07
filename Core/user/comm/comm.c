@@ -19,6 +19,7 @@
 #include "comm.h"
 #include "../motor/motor.h"
 #include "../arm/servo_arm.h"
+#include "../chassis/chassis.h"
 #include "usart.h"
 
 #include "FreeRTOS.h"
@@ -348,6 +349,7 @@ static void comm_print_help(void)
   tx_str("POS <1-4> <deg>            position loop target (ZERO first)\r\n");
   tx_str("POSEN <1-4> <0|1>          position loop enable\r\n");
   tx_str("PIDP <1-4> <kp> <ki> <kd>  position loop gains x1000\r\n");
+  tx_str("VEL <vx> <vy> <wz>        chassis twist (m/s, m/s, rad/s)\r\n");
   tx_str("S   <1-4> <deg>            servo jump  | SS <1-4> <deg> servo slew\r\n");
   tx_str("SP  <1-4> <us>             servo pulse (500-2500)\r\n");
   tx_str("SLEW <1-4> <us/s>  RELAX  ARMED\r\n");
@@ -519,6 +521,27 @@ static void comm_handle_line(char *line)
     }
     Motor_SetPosPidMilli((MotorId_t)idx, kp, ki, kd);
     tx_str("OK PIDP\r\n");
+  }
+
+  /* ------------------------- 底盘（麦轮运动学） ------------------------- */
+  else if (strcmp(cmd, "VEL") == 0)
+  {
+    int32_t vx, vy, wz;
+
+    if ((arg_milli(&save, &vx) == 0U) || (arg_milli(&save, &vy) == 0U) ||
+        (arg_milli(&save, &wz) == 0U))
+    {
+      tx_str("ERR usage: VEL <vx_mps> <vy_mps> <wz_radps>\r\n");
+      return;
+    }
+    if (Chassis_SetVelocity((float)vx * 0.001f,
+                            (float)vy * 0.001f,
+                            (float)wz * 0.001f) == 0U)
+    {
+      tx_str("ERR VEL rejected (NaN/Inf)\r\n");
+      return;
+    }
+    tx_str("OK VEL\r\n");
   }
 
   /* ------------------------- 舵机 ------------------------- */
